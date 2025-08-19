@@ -20,23 +20,37 @@
 
 ## 🚀 快速开始
 
-### 一键安装运行
+### 一键远程使用
 
 ```bash
-# 下载并运行脚本
+# 自动备份（推荐）- 直接执行备份
+curl -fsSL https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh | bash -s -- --auto
+
+# 安装到本地 - 下载脚本到本地使用
+curl -fsSL https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh | bash -s -- --install
+
+# 默认模式 - 5秒倒计时后自动备份（可Ctrl+C取消）
 curl -fsSL https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh | bash
 ```
 
-### 或者下载到本地使用
+#### 💡 远程执行说明
+
+- **推荐使用 `--auto` 参数**：直接执行备份，无延迟
+- **使用 `--install` 参数**：安装到本地后可完整使用所有功能  
+- **默认模式**：由于管道限制无法真正交互，会显示提示后自动备份
+
+### 安装到本地使用
 
 ```bash
-# 下载脚本
-wget https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh
+# 方法1：远程安装（推荐）
+curl -fsSL https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh | bash
+# 然后选择选项3
 
-# 添加执行权限
+# 方法2：手动下载
+wget https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh
 chmod +x docker_backup_all_in_one.sh
 
-# 启动交互式界面
+# 启动本地界面
 ./docker_backup_all_in_one.sh
 ```
 
@@ -64,6 +78,9 @@ chmod +x docker_backup_all_in_one.sh
 ```bash
 # 执行完整自动备份
 ./docker_backup_all_in_one.sh --auto
+
+# 安装到本地系统
+./docker_backup_all_in_one.sh --install
 
 # 查看帮助信息
 ./docker_backup_all_in_one.sh --help
@@ -234,7 +251,18 @@ docker logs 容器名
 docker images
 ```
 
-#### 4. 恢复脚本问题
+#### 4. 远程执行问题
+```bash
+# 如果 curl | bash 执行失败，可以先下载到本地
+wget https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh
+chmod +x docker_backup_all_in_one.sh
+./docker_backup_all_in_one.sh
+
+# 或者使用安装模式
+curl -fsSL https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh | bash -s -- --install
+```
+
+#### 5. 恢复脚本问题
 - 检查备份文件完整性：`tar -tzf 备份文件.tar.gz`
 - 确认目标路径权限正确
 - 手动调整启动脚本中的挂载路径
