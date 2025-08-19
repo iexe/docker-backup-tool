@@ -43,28 +43,6 @@ curl -fsSL https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/do
 - **使用 `--install` 参数**：安装到本地后可完整使用所有功能  
 - **默认模式**：由于管道限制无法真正交互，会显示提示后自动备份
 
-### 安装到本地使用
-
-```bash
-# 方法1：远程安装（推荐）
-curl -fsSL https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh | bash
-# 然后选择选项3
-
-# 方法2：手动下载
-wget https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh
-chmod +x docker_backup_all_in_one.sh
-
-# 启动本地界面
-./docker_backup_all_in_one.sh
-```
-
-## 📋 使用方法
-
-### 交互式模式（推荐）
-
-```bash
-./docker_backup_all_in_one.sh
-```
 
 启动后会显示完整功能菜单：
 ```
@@ -111,38 +89,6 @@ Docker备份管理系统：
 
 配置后会自动添加到系统crontab中。
 
-## 🌐 跨服务器恢复
-
-### 步骤1：在源服务器备份
-
-```bash
-# 执行备份
-./docker_backup_all_in_one.sh --auto
-
-# 查看备份文件
-ls -la /opt/docker_backups/
-```
-
-### 步骤2：传输到目标服务器
-
-```bash
-# 复制备份文件
-scp /opt/docker_backups/docker_backup_*.tar.gz user@target-server:/tmp/
-
-# 复制恢复脚本（如果需要）
-scp /opt/docker_backups/restore_backup.sh user@target-server:/tmp/
-```
-
-### 步骤3：在目标服务器恢复
-
-```bash
-# 方法1：使用本工具恢复
-./docker_backup_all_in_one.sh
-# 选择菜单项2（恢复备份）
-
-# 方法2：直接使用恢复脚本
-./restore_backup.sh /tmp/docker_backup_*.tar.gz
-```
 
 ## 📦 备份内容
 
