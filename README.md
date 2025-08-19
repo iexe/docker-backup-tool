@@ -24,14 +24,14 @@
 
 ```bash
 # 下载并运行脚本
-curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/docker-backup-tool/main/docker_backup_all_in_one.sh | bash
+curl -fsSL https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh | bash
 ```
 
 ### 或者下载到本地使用
 
 ```bash
 # 下载脚本
-wget https://raw.githubusercontent.com/YOUR_USERNAME/docker-backup-tool/main/docker_backup_all_in_one.sh
+wget https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh
 
 # 添加执行权限
 chmod +x docker_backup_all_in_one.sh
@@ -271,7 +271,7 @@ tail -f /opt/docker_backups/backup_*.log
 5. 创建 Pull Request
 
 ### 报告问题
-如果您发现bug或有功能建议，请[创建Issue](https://github.com/YOUR_USERNAME/docker-backup-tool/issues)。
+如果您发现bug或有功能建议，请[创建Issue](https://github.com/moli-xia/docker-backup-tool/issues)。
 
 ## 📄 许可证
 
@@ -288,8 +288,8 @@ tail -f /opt/docker_backups/backup_*.log
 
 ### 获取帮助
 - 📖 查看脚本内置帮助：`./docker_backup_all_in_one.sh --help`
-- 🐛 报告问题：[GitHub Issues](https://github.com/YOUR_USERNAME/docker-backup-tool/issues)
-- 💬 讨论交流：[GitHub Discussions](https://github.com/YOUR_USERNAME/docker-backup-tool/discussions)
+- 🐛 报告问题：[GitHub Issues](https://github.com/moli-xia/docker-backup-tool/issues)
+- 💬 讨论交流：[GitHub Discussions](https://github.com/moli-xia/docker-backup-tool/discussions)
 
 ---
 
