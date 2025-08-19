@@ -1,0 +1,29 @@
+# Backup files
+*.tar.gz
+*.log
+backup_*
+docker_backup_*
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Test files
+test_*
+*_test
+
+# Local config files
+config.local
+.env.local
