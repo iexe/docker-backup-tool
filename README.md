@@ -24,14 +24,17 @@
 
 ### 一键远程使用
 
+
+- **安装到本地（推荐） - 下载脚本到本地使用**
 ```bash
-# 自动备份（推荐）- 直接执行备份
-curl -fsSL https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh | bash -s -- --auto
-
-# 安装到本地 - 下载脚本到本地使用
 curl -fsSL https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh | bash -s -- --install
-
-# 默认模式 - 5秒倒计时后自动备份（可Ctrl+C取消）
+```
+- **自动备份- 直接执行备份**
+```bash
+curl -fsSL https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh | bash -s -- --auto
+```
+- **默认模式 - 5秒倒计时后自动备份（可Ctrl+C取消）**
+```bash
 curl -fsSL https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh | bash
 ```
 
@@ -41,28 +44,6 @@ curl -fsSL https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/do
 - **使用 `--install` 参数**：安装到本地后可完整使用所有功能  
 - **默认模式**：由于管道限制无法真正交互，会显示提示后自动备份
 
-### 安装到本地使用
-
-```bash
-# 方法1：远程安装（推荐）
-curl -fsSL https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh | bash
-# 然后选择选项3
-
-# 方法2：手动下载
-wget https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh
-chmod +x docker_backup_all_in_one.sh
-
-# 启动本地界面
-./docker_backup_all_in_one.sh
-```
-
-## 📋 使用方法
-
-### 交互式模式（推荐）
-
-```bash
-./docker_backup_all_in_one.sh
-```
 
 启动后会显示完整功能菜单：
 ```
