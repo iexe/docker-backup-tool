@@ -1,8 +1,7 @@
 #!/bin/bash
-
 # Docker应用简化备份脚本
-# 版本：3.1 - 修复版本，解决界面刷新问题
-
+# 版本：3.3.0 - 修复版本，解决空包问题和代码冗余
+# 2025/10/16  修复清除旧备份逻辑错误。清楚应该在脚本执行之前，但是现在是脚本执行后已经备份的内容被清除后才创建的备份压缩包文件。修复使用GeMini 2.5 pro
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -116,8 +115,8 @@ configure_backup_dir() {
 # 显示标题
 show_title() {
     echo -e "${PURPLE}╔══════════════════════════════════════╗${NC}"
-    echo -e "${PURPLE}║       Docker备份恢复系统 v3.2.1     ║${NC}"
-    echo -e "${PURPLE}║           修复版本(稳定)            ║${NC}"
+    echo -e "${PURPLE}║      Docker备份恢复系统 v3.3.0       ║${NC}"
+    echo -e "${PURPLE}║           修复版本 (稳定)            ║${NC}"
     echo -e "${PURPLE}╚══════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -278,151 +277,6 @@ EOF
     chmod +x "$backup_path/start_container.sh"
 }
 
-# 执行完整备份
-perform_backup() {
-    local containers=$(docker ps --format "{{.Names}}" 2>/dev/null)
-    
-    if [ -z "$containers" ]; then
-        print_error "没有运行中的容器"
-        return 1
-    fi
-    
-    # 创建备份目录和日志
-    mkdir -p "$BACKUP_DIR"
-    LOG_FILE="$BACKUP_DIR/backup_$TIMESTAMP.log"
-    
-    log "开始完整备份"
-    log "备份容器：$(echo "$containers" | tr '\n' ' ')"
-    
-    local success=0
-    
-    # 备份每个容器
-    while IFS= read -r container; do
-        if [ -n "$container" ]; then
-            print_info "备份容器：$container"
-            
-            local container_backup_dir="$BACKUP_DIR/${container}_backup_$TIMESTAMP"
-            mkdir -p "$container_backup_dir"
-            
-            backup_container_config "$container" "$container_backup_dir"
-            backup_container_volumes "$container" "$container_backup_dir"
-            generate_startup_script "$container" "$container_backup_dir"
-            
-            ((success++))
-            print_success "容器 $container 备份完成"
-        fi
-    done <<< "$containers"
-    
-    # 创建系统信息
-    cat > "$BACKUP_DIR/system_info_$TIMESTAMP.txt" << EOF
-备份系统信息
-=============
-备份时间: $(date)
-源服务器: $HOSTNAME
-Docker版本: $(docker --version 2>/dev/null)
-成功备份: $success 个容器
-
-容器列表:
-$(echo "$containers" | sed 's/^/- /')
-EOF
-    
-    # 创建恢复脚本
-    cat > "$BACKUP_DIR/restore_backup.sh" << 'RESTORE_SCRIPT'
-#!/bin/bash
-# Docker备份恢复脚本
-
-RESTORE_DIR="/tmp/docker_restore_$(date +%s)"
-BACKUP_FILE="$1"
-
-if [ $# -eq 0 ]; then
-    echo "使用方法: $0 <备份文件路径>"
-    exit 1
-fi
-
-if [ ! -f "$BACKUP_FILE" ]; then
-    echo "备份文件不存在: $BACKUP_FILE"
-    exit 1
-fi
-
-echo "开始恢复..."
-mkdir -p "$RESTORE_DIR"
-cd "$RESTORE_DIR"
-
-echo "解压备份文件..."
-tar -xzf "$BACKUP_FILE"
-
-echo "恢复数据卷..."
-for container_dir in *_backup_*/; do
-    if [ -d "$container_dir" ]; then
-        container_name=$(echo "$container_dir" | sed 's/_backup_.*\///')
-        echo "处理容器: $container_name"
-        
-        cd "$container_dir"
-        
-        for volume_file in volume_*.tar.gz; do
-            if [ -f "$volume_file" ]; then
-                volume_name=$(echo "$volume_file" | sed 's/^volume_//' | sed 's/\.tar\.gz$//')
-                echo "恢复数据卷: $volume_name"
-                docker volume create "$volume_name" 2>/dev/null
-                docker run --rm -v "$volume_name:/data" -v "$PWD:/backup" alpine:latest tar xzf "/backup/$volume_file" -C /data
-            fi
-        done
-        
-        for mount_file in mount_*.tar.gz; do
-            if [ -f "$mount_file" ]; then
-                mount_name=$(echo "$mount_file" | sed 's/^mount_//' | sed 's/\.tar\.gz$//')
-                target_path="/opt/restored_data/$container_name/$mount_name"
-                echo "恢复挂载目录到: $target_path"
-                mkdir -p "$target_path"
-                tar -xzf "$mount_file" -C "$target_path"
-            fi
-        done
-        
-        cd ..
-    fi
-done
-
-echo "数据恢复完成！"
-echo "恢复目录: $RESTORE_DIR"
-echo ""
-echo "启动容器："
-for container_dir in *_backup_*/; do
-    if [ -d "$container_dir" ] && [ -f "$container_dir/start_container.sh" ]; then
-        container_name=$(echo "$container_dir" | sed 's/_backup_.*\///')
-        echo "cd $RESTORE_DIR/$container_dir && ./start_container.sh  # 启动 $container_name"
-    fi
-done
-RESTORE_SCRIPT
-    
-    chmod +x "$BACKUP_DIR/restore_backup.sh"
-    
-    # 删除旧备份文件（替换模式）
-    print_info "清理旧备份文件..."
-    find "$BACKUP_DIR" -name "docker_backup_*.tar.gz" -type f -delete 2>/dev/null
-    find "$BACKUP_DIR" -name "*_backup_*" -type d -exec rm -rf {} + 2>/dev/null || true
-    find "$BACKUP_DIR" -name "system_info_*.txt" -type f -delete 2>/dev/null
-    
-    # 创建压缩包（固定文件名，不包含时间戳）
-    log "创建备份压缩包..."
-    local backup_archive="$BACKUP_DIR/docker_backup_${HOSTNAME}_latest.tar.gz"
-    
-    cd "$BACKUP_DIR"
-    tar -czf "docker_backup_${HOSTNAME}_latest.tar.gz" *_backup_$TIMESTAMP/ system_info_$TIMESTAMP.txt restore_backup.sh 2>/dev/null
-    
-    # 清理临时文件
-    rm -rf *_backup_$TIMESTAMP/ system_info_$TIMESTAMP.txt
-    
-    local backup_size=$(du -h "$backup_archive" | cut -f1)
-    print_success "备份完成！"
-    print_info "备份文件：$backup_archive ($backup_size)"
-    print_info "恢复脚本：$BACKUP_DIR/restore_backup.sh"
-    echo ""
-    print_info "跨服务器恢复命令："
-    echo "$BACKUP_DIR/restore_backup.sh $backup_archive"
-    
-    log "备份成功完成"
-}
-
 # 执行指定模式的备份
 perform_backup_mode() {
     local mode=$1
@@ -431,7 +285,15 @@ perform_backup_mode() {
     # 创建备份目录和日志
     mkdir -p "$BACKUP_DIR"
     LOG_FILE="$BACKUP_DIR/backup_$TIMESTAMP.log"
-    
+
+    # --- 修复：在备份开始前清理旧的临时文件和最终压缩包，确保全新开始 ---
+    print_info "清理旧备份文件（替换模式）..."
+    find "$BACKUP_DIR" -name "docker_backup_*.tar.gz" -type f -delete 2>/dev/null
+    find "$BACKUP_DIR" -name "*_backup_*" -type d -exec rm -rf {} + 2>/dev/null || true
+    find "$BACKUP_DIR" -name "system_info_*.txt" -type f -delete 2>/dev/null
+    find "$BACKUP_DIR" -name "restore_backup.sh" -type f -delete 2>/dev/null
+    # --- 清理结束 ---
+
     case $mode in
         4) # 自定义选择容器
             containers=$(select_containers_interactive)
@@ -504,31 +366,34 @@ EOF
     # 创建恢复脚本
     create_restore_script
     
-    # 删除旧备份文件（替换模式）
-    print_info "清理旧备份文件..."
-    find "$BACKUP_DIR" -name "docker_backup_*.tar.gz" -type f -delete 2>/dev/null
-    find "$BACKUP_DIR" -name "*_backup_*" -type d -exec rm -rf {} + 2>/dev/null || true
-    find "$BACKUP_DIR" -name "system_info_*.txt" -type f -delete 2>/dev/null
-    
     # 创建压缩包（固定文件名，不包含时间戳）
     log "创建备份压缩包..."
     local backup_archive="$BACKUP_DIR/docker_backup_${HOSTNAME}_latest.tar.gz"
     
     cd "$BACKUP_DIR"
-    tar -czf "docker_backup_${HOSTNAME}_latest.tar.gz" *_backup_$TIMESTAMP/ system_info_$TIMESTAMP.txt restore_backup.sh 2>/dev/null
+    # --- 修复：从此处的 tar 命令中移除 2>/dev/null，以便在打包失败时显示错误 ---
+    tar -czf "$backup_archive" *_backup_$TIMESTAMP/ system_info_$TIMESTAMP.txt restore_backup.sh
     
-    # 清理临时文件
-    rm -rf *_backup_$TIMESTAMP/ system_info_$TIMESTAMP.txt
+    # 清理本次备份产生的临时文件
+    log "清理本次备份的临时文件..."
+    rm -rf *_backup_$TIMESTAMP/
+    rm -f system_info_$TIMESTAMP.txt
     
-    local backup_size=$(du -h "$backup_archive" | cut -f1)
-    print_success "备份完成！"
-    print_info "备份文件：$backup_archive ($backup_size)"
-    print_info "恢复脚本：$BACKUP_DIR/restore_backup.sh"
-    echo ""
-    print_info "跨服务器恢复命令："
-    echo "$BACKUP_DIR/restore_backup.sh $backup_archive"
-    
-    log "备份成功完成"
+    if [ -f "$backup_archive" ]; then
+        local backup_size=$(du -h "$backup_archive" | cut -f1)
+        print_success "备份完成！"
+        print_info "备份文件：$backup_archive ($backup_size)"
+        print_info "恢复脚本：$BACKUP_DIR/restore_backup.sh"
+        echo ""
+        print_info "跨服务器恢复命令："
+        echo "  # 将 $backup_archive 和 restore_backup.sh 复制到目标服务器"
+        echo "  ./restore_backup.sh $backup_archive"
+        
+        log "备份成功完成"
+    else
+        print_error "创建备份压缩包失败！请检查日志：$LOG_FILE"
+        log "备份失败：无法创建压缩包 $backup_archive"
+    fi
 }
 
 # 交互式选择容器
@@ -607,7 +472,7 @@ fi
 
 echo "开始恢复..."
 mkdir -p "$RESTORE_DIR"
-cd "$RESTORE_DIR"
+cd "$RESTORE_DIR" || exit
 
 echo "解压备份文件..."
 tar -xzf "$BACKUP_FILE"
@@ -618,24 +483,28 @@ for container_dir in *_backup_*/; do
         container_name=$(echo "$container_dir" | sed 's/_backup_.*\///')
         echo "处理容器: $container_name"
         
-        cd "$container_dir"
+        cd "$container_dir" || continue
         
         for volume_file in volume_*.tar.gz; do
             if [ -f "$volume_file" ]; then
                 volume_name=$(echo "$volume_file" | sed 's/^volume_//' | sed 's/\.tar\.gz$//')
                 echo "恢复数据卷: $volume_name"
-                docker volume create "$volume_name" 2>/dev/null
+                docker volume create "$volume_name" >/dev/null 2>&1
                 docker run --rm -v "$volume_name:/data" -v "$PWD:/backup" alpine:latest tar xzf "/backup/$volume_file" -C /data
             fi
         done
         
         for mount_file in mount_*.tar.gz; do
             if [ -f "$mount_file" ]; then
-                mount_name=$(echo "$mount_file" | sed 's/^mount_//' | sed 's/\.tar\.gz$//')
-                target_path="/opt/restored_data/$container_name/$mount_name"
-                echo "恢复挂载目录到: $target_path"
-                mkdir -p "$target_path"
-                tar -xzf "$mount_file" -C "$target_path"
+                # mount_name=$(echo "$mount_file" | sed 's/^mount_//' | sed 's/\.tar\.gz$//')
+                # target_path="/opt/restored_data/$container_name/$mount_name"
+                # echo "恢复挂载目录到: $target_path (请注意：绑定的主机目录需要手动确认路径并放置)"
+                # mkdir -p "$target_path"
+                # tar -xzf "$mount_file" -C "$target_path"
+                echo "警告：检测到绑定挂载的备份文件 '$mount_file'。"
+                echo "       为了服务器安全，脚本不会自动恢复主机路径。"
+                echo "       请手动解压此文件，并将其内容放置到新容器所需的正确主机路径上。"
+                echo "       恢复后的启动脚本 start_container.sh 中会指明原始的主机路径。"
             fi
         done
         
@@ -644,9 +513,12 @@ for container_dir in *_backup_*/; do
 done
 
 echo "数据恢复完成！"
-echo "恢复目录: $RESTORE_DIR"
+echo "临时恢复目录: $RESTORE_DIR"
 echo ""
-echo "启动容器："
+echo "请检查以上输出，确认数据卷和绑定目录已按预期恢复。"
+echo "接下来，您可以手动执行以下命令来启动容器："
+echo "（请在执行前，仔细检查并编辑 start_container.sh 脚本中的主机路径 -v /host/path:/container/path）"
+echo ""
 for container_dir in *_backup_*/; do
     if [ -d "$container_dir" ] && [ -f "$container_dir/start_container.sh" ]; then
         container_name=$(echo "$container_dir" | sed 's/_backup_.*\///')
@@ -721,10 +593,10 @@ backup_menu() {
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "🔄 备份操作"
-    echo "1) 完整备份（配置+数据+镜像）"
+    echo "1) 完整备份（配置+数据）"
     echo "2) 仅配置备份（快速）"
     echo "3) 仅数据备份（数据卷+挂载）"
-    echo "4) 自定义选择容器"
+    echo "4) 自定义选择容器（完整备份）"
     echo "5) 返回主菜单"
     echo ""
     
@@ -770,7 +642,6 @@ restore_menu() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "📥 恢复备份"
     
-    # 查找备份文件（新格式和旧格式兼容）
     local backups=$(find "$BACKUP_DIR" -name "docker_backup_*.tar.gz" -type f 2>/dev/null | sort -r)
     
     if [ -z "$backups" ]; then
@@ -824,7 +695,7 @@ restore_menu() {
     if [ -x "$BACKUP_DIR/restore_backup.sh" ]; then
         "$BACKUP_DIR/restore_backup.sh" "$selected_backup"
     else
-        print_error "恢复脚本不存在，请先创建备份"
+        print_error "恢复脚本不存在，请先创建一次备份"
     fi
     
     read -p "按回车返回主菜单..." -r
@@ -847,36 +718,39 @@ cron_menu() {
     
     read -p "请选择 (1-7): " choice
     
+    local cron_schedule=""
+    local desc=""
+
     case $choice in
         1)
-            local cron_schedule="0 2 * * *"
-            local desc="每天凌晨2点"
+            cron_schedule="0 2 * * *"
+            desc="每天凌晨2点"
             ;;
         2)
-            local cron_schedule="0 2 * * 0"
-            local desc="每周日凌晨2点"
+            cron_schedule="0 2 * * 0"
+            desc="每周日凌晨2点"
             ;;
         3)
-            local cron_schedule="0 2 1 * *"
-            local desc="每月1号凌晨2点"
+            cron_schedule="0 2 1 * *"
+            desc="每月1号凌晨2点"
             ;;
         4)
             echo "Cron表达式格式: 分 时 日 月 周"
             echo "例如: 0 2 * * * (每天凌晨2点)"
-            echo "     30 1 * * 1 (每周一凌晨1点30分)"
+            echo "      30 1 * * 1 (每周一凌晨1点30分)"
             read -p "请输入cron表达式: " cron_schedule
-            local desc="自定义时间"
+            desc="自定义时间"
             ;;
         5)
             echo ""
             print_info "当前定时任务："
-            crontab -l 2>/dev/null | grep "docker_backup" || echo "没有Docker备份相关的定时任务"
+            crontab -l 2>/dev/null | grep "docker-backup-auto" || echo "没有Docker备份相关的定时任务"
             read -p "按回车返回..." -r
             cron_menu
             return
             ;;
         6)
-            crontab -l 2>/dev/null | grep -v "docker_backup" | crontab -
+            crontab -l 2>/dev/null | grep -v "docker-backup-auto" | crontab -
             print_success "定时任务已删除"
             read -p "按回车返回..." -r
             cron_menu
@@ -893,19 +767,22 @@ cron_menu() {
             return
             ;;
     esac
+
+    if [ -z "$cron_schedule" ]; then
+        cron_menu
+        return
+    fi
     
     # 配置定时任务
-    local script_path="$(realpath "$0")"
-    local cron_entry="$cron_schedule $script_path --auto >/dev/null 2>&1"
+    local script_path
+    script_path=$(realpath "$0")
+    local cron_entry="$cron_schedule $script_path --auto #docker-backup-auto"
     
-    crontab -l 2>/dev/null | grep -v "docker_backup" > /tmp/crontab_new
-    echo "$cron_entry" >> /tmp/crontab_new
-    crontab /tmp/crontab_new
-    rm -f /tmp/crontab_new
+    (crontab -l 2>/dev/null | grep -v "docker-backup-auto"; echo "$cron_entry") | crontab -
     
     print_success "定时任务已配置：$desc"
     echo "当前定时任务："
-    crontab -l | grep "docker_backup"
+    crontab -l | grep "docker-backup-auto"
     
     read -p "按回车返回主菜单..." -r
     main_menu
@@ -918,26 +795,26 @@ mode_menu() {
     echo "🔧 备份模式说明"
     echo ""
     echo "1) 完整备份："
-    echo "   • 容器配置 + 环境变量"
-    echo "   • 数据卷 + 绑定挂载"
-    echo "   • 镜像信息 + 启动脚本"
-    echo "   适用：生产环境、服务器迁移"
+    echo "     • 容器配置 + 环境变量"
+    echo "     • 数据卷 + 绑定挂载"
+    echo "     • 镜像信息 + 启动脚本"
+    echo "     适用：生产环境、服务器迁移"
     echo ""
     echo "2) 仅配置备份："
-    echo "   • 容器配置 + 环境变量"
-    echo "   • 端口映射 + 网络配置"
-    echo "   • 启动脚本（无数据）"
-    echo "   适用：快速配置备份"
+    echo "     • 容器配置 + 环境变量"
+    echo "     • 端口映射 + 网络配置"
+    echo "     • 启动脚本（无数据）"
+    echo "     适用：快速配置备份"
     echo ""
     echo "3) 仅数据备份："
-    echo "   • 数据卷完整备份"
-    echo "   • 绑定挂载目录"
-    echo "   适用：数据安全备份"
+    echo "     • 数据卷完整备份"
+    echo "     • 绑定挂载目录"
+    echo "     适用：数据安全备份"
     echo ""
     echo "4) 自定义选择："
-    echo "   • 手动选择要备份的容器"
-    echo "   • 完整备份选中容器"
-    echo "   适用：特定容器备份"
+    echo "     • 手动选择要备份的容器"
+    echo "     • 完整备份选中容器"
+    echo "     适用：特定容器备份"
     echo ""
     
     read -p "按回车返回主菜单..." -r
@@ -971,8 +848,10 @@ show_backup_history() {
 
 # 显示帮助
 show_help() {
+    local script_name
+    script_name=$(basename "$0")
     echo ""
-    echo "Docker备份恢复系统 v3.2.1 - 使用说明"
+    echo "Docker备份恢复系统 v3.3.0 - 使用说明"
     echo ""
     echo "功能："
     echo "  🔄 完整备份（配置+数据卷+镜像信息）"
@@ -981,10 +860,10 @@ show_help() {
     echo "  🔧 自动生成恢复脚本"
     echo ""
     echo "使用方法："
-    echo "  $(basename "$0")                    # 完整功能菜单"
-    echo "  $(basename "$0") --auto             # 自动备份"
-    echo "  $(basename "$0") --install          # 安装到本地"
-    echo "  $(basename "$0") --help             # 显示帮助"
+    echo "  $script_name            # 完整功能菜单"
+    echo "  $script_name --auto     # 自动执行一次完整备份（用于定时任务）"
+    echo "  $script_name --install  # 安装到本地/opt/docker-backup目录"
+    echo "  $script_name --help     # 显示此帮助"
     echo ""
     echo "完整功能包括："
     echo "  • 🔄 执行备份 - 4种备份模式可选"
@@ -993,64 +872,50 @@ show_help() {
     echo "  • 📋 查看备份历史 - 备份文件管理"
     echo "  • 🔧 备份模式选择 - 详细说明"
     echo ""
-    echo "远程使用："
-    echo "  # 自动备份（推荐）"
-    echo "  curl -fsSL URL/$(basename "$0") | bash -s -- --auto"
-    echo ""
-    echo "  # 安装到本地"
-    echo "  curl -fsSL URL/$(basename "$0") | bash -s -- --install"
-    echo ""
-    echo "  # 默认模式（5秒后自动备份）"
-    echo "  curl -fsSL URL/$(basename "$0") | bash"
-    echo ""
-    echo "备份内容："
-    echo "  • 容器配置和环境变量"
-    echo "  • Docker数据卷"
-    echo "  • 绑定挂载目录"
-    echo "  • 自动生成的启动脚本"
-    echo ""
     echo "恢复方法："
-    echo "  1. 复制备份文件到目标服务器"
-    echo "  2. 运行: ./restore_backup.sh 备份文件.tar.gz"
-    echo "  3. 按提示启动容器"
+    echo "  1. 将备份文件(tar.gz)和 restore_backup.sh 复制到目标服务器"
+    echo "  2. 给予执行权限: chmod +x restore_backup.sh"
+    echo "  3. 运行: ./restore_backup.sh docker_backup_..._latest.tar.gz"
+    echo "  4. 按提示检查并手动执行启动容器的命令"
     echo ""
 }
 
 # 检测管道执行
 is_piped() {
-    # 更宽松的检测：只有当所有标准输入输出都不是终端时才认为是远程执行
-    # 这样可以避免误判本地的管道输入（如 echo "1" | script.sh）
+    # 如果标准输入、输出、错误都不是终端，则判断为远程管道执行
     if [ ! -t 0 ] && [ ! -t 1 ] && [ ! -t 2 ]; then
         return 0
     fi
-    
-    # 默认认为是本地交互执行（即使stdin来自管道）
     return 1
 }
-
-
 
 # 简化的本地安装
 install_to_local_simple() {
     local install_dir="/opt/docker-backup"
-    local script_name="docker_backup_all_in_one.sh"
-    local script_url="https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/$script_name"
+    local script_name="docker-backup.sh"
+    # 注意：这里假设脚本源在GitHub上，请根据实际情况修改
+    local script_url="https://raw.githubusercontent.com/moli-xia/docker-backup-tool/main/docker_backup_all_in_one.sh"
     
     print_info "安装Docker备份工具到本地..."
     
-    # 创建安装目录
-    if ! mkdir -p "$install_dir" 2>/dev/null; then
-        print_warning "无法创建 $install_dir，使用当前目录"
-        install_dir="."
+    if ! mkdir -p "$install_dir"; then
+        print_error "无法创建安装目录 $install_dir。请检查权限。"
+        return 1
     fi
     
     local script_path="$install_dir/$script_name"
     
-    # 下载脚本
+    print_info "正在从URL下载脚本..."
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$script_url" -o "$script_path"
+        if ! curl -fsSL "$script_url" -o "$script_path"; then
+            print_error "使用curl下载失败。请检查网络或URL: $script_url"
+            return 1
+        fi
     elif command -v wget >/dev/null 2>&1; then
-        wget -q "$script_url" -O "$script_path"
+        if ! wget -q "$script_url" -O "$script_path"; then
+            print_error "使用wget下载失败。请检查网络或URL: $script_url"
+            return 1
+        fi
     else
         print_error "需要curl或wget命令来下载脚本"
         return 1
@@ -1060,17 +925,19 @@ install_to_local_simple() {
         chmod +x "$script_path"
         print_success "脚本已安装到：$script_path"
         
-        mkdir -p /opt/docker_backups 2>/dev/null || true
+        # 尝试创建默认备份目录
+        mkdir -p "$DEFAULT_BACKUP_DIR" 2>/dev/null || true
         
         echo ""
         print_info "使用方法："
-        echo "  $script_path                    # 本地交互界面"
-        echo "  $script_path --auto             # 自动备份"
-        echo "  $script_path --help             # 查看帮助"
+        echo "  $script_path          # 启动交互界面"
+        echo "  $script_path --auto   # 执行一次自动备份"
+        echo "  $script_path --help   # 查看帮助"
         echo ""
-        print_info "脚本已安装完成！可以在任何时候运行进行备份。"
+        print_info "建议将 $install_dir 添加到您的PATH，或创建一个软链接："
+        echo "  ln -s $script_path /usr/local/bin/docker-backup"
     else
-        print_error "下载失败"
+        print_error "脚本下载后未找到，安装失败"
         return 1
     fi
 }
@@ -1085,8 +952,8 @@ main() {
             if ! check_environment; then
                 exit 1
             fi
-            print_info "自动备份模式"
-            perform_backup
+            print_info "自动备份模式（完整备份）"
+            perform_backup_mode 1
             ;;
         --install)
             install_to_local_simple
@@ -1100,25 +967,22 @@ main() {
                 exit 1
             fi
             
-            # 优先显示完整交互菜单，除非明确是远程管道执行
             if is_piped; then
-                print_info "检测到远程执行"
+                print_info "检测到远程管道执行..."
                 echo ""
                 echo "🔽 推荐用法："
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 echo "1️⃣  自动备份：curl ... | bash -s -- --auto"
                 echo "2️⃣  安装到本地：curl ... | bash -s -- --install"
                 echo ""
-                print_warning "当前会自动执行备份，如不需要请按Ctrl+C取消"
-                echo ""
-                # 给用户5秒时间看清楚
+                print_warning "当前模式将自动执行完整备份，如不需要请按Ctrl+C"
+                
                 for i in 5 4 3 2 1; do
-                    echo -ne "⏱️  自动执行备份倒计时: $i 秒 (Ctrl+C取消)\r"
+                    echo -ne "⏱️  自动备份倒计时: $i 秒 (按 Ctrl+C 取消)\r"
                     sleep 1
                 done
-                echo ""
-                echo ""
-                perform_backup
+                echo -e "\n"
+                perform_backup_mode 1
             else
                 # 显示完整交互菜单
                 main_menu
